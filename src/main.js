@@ -299,7 +299,7 @@ class MiniMediaPlayer extends LitElement {
     return html`
       <paper-icon-button class='power-button'
         .icon=${ICON.POWER}
-        @click='${e => this._handlePower(e)}'
+        @click='${e => this.player.toggle(e)}'
         ?color=${!this.config.hide.power_state && (this.player.active || this.idle)}>
       </paper-icon-button>`;
   }
@@ -385,7 +385,7 @@ class MiniMediaPlayer extends LitElement {
       <paper-icon-button .icon=${ICON.GROUP}
         ?opaque=${this.player.groupCount}
         ?color=${this.edit}
-        @click='${e => this._handleGroupButton(e)}'>
+        @click=${e => this._handleGroupButton(e)}>
       </paper-icon-button>`;
   }
 
@@ -437,7 +437,7 @@ class MiniMediaPlayer extends LitElement {
     if (sources.length === 0 || this.config.hide.source) return;
 
     const selected = sources.indexOf(source);
-    const button = this.config.source === 'icon' || this.config.collapse || this.player.break || this.player.idle
+    const button = this.config.source === 'icon' || this.config.collapse || this.break || this.player.idle
       ? html`<paper-icon-button class='source-menu__button' slot='dropdown-trigger' .icon=${ICON.DROPDOWN}></paper-icon-button>`
       : html`
         <mwc-button class='source-menu__button' slot='dropdown-trigger'>
@@ -486,7 +486,6 @@ class MiniMediaPlayer extends LitElement {
 
   _renderMuteButton(muted) {
     if (this.config.hide.mute) return;
-    const options = { is_volume_muted: !muted };
     switch (this.config.replace_mute) {
       case 'play':
         return this._renderButton(ICON.PLAY[this.player.isPlaying], 'media_play_pause');
@@ -495,7 +494,7 @@ class MiniMediaPlayer extends LitElement {
       case 'next':
         return this._renderButton(ICON.NEXT, 'media_next_track');
       default:
-        return this._renderButton(ICON.MUTE[muted], 'volume_mute', options);
+        return this._renderButton(ICON.MUTE[muted], 'volume_mute', { is_volume_muted: !muted });
     }
   }
 
@@ -506,8 +505,8 @@ class MiniMediaPlayer extends LitElement {
           ${this._renderMuteButton(muted)}
         </div>
         <paper-slider ?disabled=${muted}
-          @change='${e => this._handleVolumeChange(e)}'
-          @click='${e => e.stopPropagation()}'
+          @change=${e => this.player.setVolume(e)}
+          @click=${e => e.stopPropagation()}
           min='0' max=${this.config.max_volume} value=${this.player.vol * 100}
           ignore-bar-touch pin>
         </paper-slider>
@@ -587,32 +586,10 @@ class MiniMediaPlayer extends LitElement {
     this.hass.callService(component, service, options);
   }
 
-  _handleVolumeChange(e) {
-    const volPercentage = parseFloat(e.target.value);
-    const vol = volPercentage > 0 ? volPercentage / 100 : 0;
-    const entity = this.config.sonos.sync_volume
-      ? this.player.group
-      : this.config.entity;
-
-    this._callService(e, 'volume_set', {
-      entity_id: entity || this.config.entity,
-      volume_level: vol,
-    });
-  }
-
   _handleSeek(e) {
     const duration = this.player.mediaDuration;
     const pos = (e.offsetX / e.target.offsetWidth) * duration;
     this._callService(e, 'media_seek', { seek_position: pos });
-  }
-
-  _handlePower(e) {
-    if (this.config.toggle_power)
-      return this._callService(e, 'toggle');
-    if (this.player.isOff)
-      return this._callService(e, 'turn_on');
-    else
-      this._callService(e, 'turn_off');
   }
 
   _handleTts(e) {
@@ -645,14 +622,18 @@ class MiniMediaPlayer extends LitElement {
     this._callService(e, 'play_media', options);
   }
 
-  _handleMore(e, { config } = this) {
-    if (config.more_info)
-      return this._fire('hass-more-info', { entityId: config.entity });
+  _handleMore(e) {
     e.stopPropagation();
+    if (!this.config.more_info) return;
+    const ev = new Event('hass-more-info', {
+      composed: true,
+    });
+    ev.detail = { entityId: this.config.entity };
+    this.dispatchEvent(e);
   }
 
   _handleSource(e, source) {
-    this._callService(e, 'select_source', { source });
+    this.player.setSource(e, source);
     this.source = source;
   }
 
@@ -669,17 +650,6 @@ class MiniMediaPlayer extends LitElement {
     } else {
       this._callService(e, 'SONOS_UNJOIN', options);
     }
-  }
-
-  _fire(type, detail = {}, options = {}) {
-    const e = new Event(type, {
-      bubbles: options.bubbles === undefined ? true : options.bubbles,
-      cancelable: Boolean(options.cancelable),
-      composed: options.composed === undefined ? true : options.composed,
-    });
-    e.detail = detail;
-    this.dispatchEvent(e);
-    return e;
   }
 
   _updateProgress() {

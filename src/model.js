@@ -187,4 +187,41 @@ export default class MediaPlayerObject {
       return false;
     }
   }
+
+  toggle(e) {
+    if (this.config.toggle_power)
+      return this.callService(e, 'toggle');
+    if (this.isOff)
+      return this.callService(e, 'turn_on');
+    else
+      this.callService(e, 'turn_off');
+  }
+
+  setSource(e, source) {
+    this.callService(e, 'select_source', { source });
+  }
+
+  next(e) {
+    this.callService(e, 'media_next_track');
+  }
+
+  setVolume(e) {
+    const vol = parseFloat(e.target.value) / 100;
+    const entity = this.config.sonos.sync_volume
+      ? this.group
+      : this.config.entity;
+
+    this.callService(e, 'volume_set', {
+      entity_id: entity || this.config.entity,
+      volume_level: vol,
+    });
+  }
+
+  callService(e, service, inOptions) {
+    e.stopPropagation();
+    this.hass.callService('media_player', service, {
+      entity_id: this.config.entity,
+      ...inOptions,
+    });
+  }
 }
